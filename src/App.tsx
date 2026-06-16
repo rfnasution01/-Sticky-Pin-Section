@@ -1,277 +1,225 @@
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
+import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
 import { portfolio } from "@/data/portfolio";
 
-gsap.registerPlugin(ScrollTrigger);
+gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
 
-const navItems = ["about", "skills", "projects", "contact"];
-const steps = portfolio.project.steps;
+type PinData = typeof portfolio.about | typeof portfolio.caseStudy;
+type Visual = PinData["steps"][number]["visual"];
 
 function App() {
 	return (
-		<main className="min-h-screen bg-[#F8F9FA] text-[#1A1A1A]">
-			<Navbar />
+		<main>
 			<Hero />
-			<About />
+			<PinShowcase data={portfolio.about} />
+			<ProjectsGrid />
+			<PinShowcase data={portfolio.caseStudy} dark />
 			<Skills />
-			<ProjectsPin />
 			<Contact />
 		</main>
 	);
 }
 
-function Navbar() {
-	const [solid, setSolid] = useState(false);
-
-	useEffect(() => {
-		const onScroll = () => setSolid(window.scrollY > 40);
-		onScroll();
-		window.addEventListener("scroll", onScroll, { passive: true });
-		return () => window.removeEventListener("scroll", onScroll);
-	}, []);
-
-	return (
-		<header className={`navbar ${solid ? "is-sticky" : ""}`}>
-			<nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-				<a href="#hero" className="font-semibold tracking-tight">
-					{portfolio.profile.name}
-				</a>
-				<div className="hidden gap-6 text-sm text-[#6B7280] sm:flex">
-					{navItems.map((item) => (
-						<a key={item} href={`#${item}`} className="capitalize transition hover:text-[#6366F1]">
-							{item}
-						</a>
-					))}
-				</div>
-			</nav>
-		</header>
-	);
-}
-
 function Hero() {
 	return (
-		<section id="hero" className="mx-auto grid min-h-screen max-w-6xl items-center gap-12 px-6 py-24 lg:grid-cols-[1.1fr_0.9fr]">
-			<div>
-				<p className="section-label">{portfolio.profile.role}</p>
-				<h1 className="mt-5 max-w-4xl text-5xl font-bold leading-[1.05] tracking-tight md:text-7xl">
-					{portfolio.profile.tagline}
-				</h1>
-				<p className="case-body mt-6 max-w-2xl text-[#6B7280]">{portfolio.profile.description}</p>
-				<div className="mt-8 flex flex-wrap gap-4">
-					<a className="rounded-full bg-[#6366F1] px-6 py-3 font-semibold text-white shadow-lg shadow-indigo-500/20 transition hover:-translate-y-0.5" href="#projects">
-						Lihat Case Study
-					</a>
-					<a className="rounded-full border border-[#E5E7EB] bg-white px-6 py-3 font-semibold transition hover:border-[#6366F1] hover:text-[#6366F1]" href={portfolio.profile.resumeUrl}>
-						Download CV
-					</a>
-				</div>
-			</div>
-			<div className="rounded-[2rem] border border-[#E5E7EB] bg-white p-8 shadow-[0_24px_80px_rgba(0,0,0,0.08)]">
-				<p className="font-mono text-sm text-[#6366F1]">Fixed Context, Changing Content</p>
-				<h2 className="mt-4 text-3xl font-bold leading-tight">Portfolio fresh graduate dengan project section yang di-pin.</h2>
-				<p className="mt-5 leading-7 text-[#6B7280]">HRD bisa membaca problem, research, solution, dan result tanpa kehilangan konteks project utama.</p>
-				<div className="mt-8 grid gap-3 text-sm text-[#6B7280]">
-					<p>{portfolio.profile.location}</p>
-					{portfolio.socials.map((social) => (
-						<a key={social.label} href={social.href} className="transition hover:text-[#6366F1]">
-							{social.label} →
-						</a>
-					))}
-				</div>
+		<section className="section-hero" id="hero">
+			<div className="hero-content">
+				<span className="label-step">{portfolio.profile.availability}</span>
+				<h1>{portfolio.profile.name}</h1>
+				<p className="hero-subtitle">{portfolio.profile.subtitle}</p>
+				<a className="cta-scroll" href="#about-pin" aria-label="Scroll to about showcase">
+					{portfolio.profile.scrollLabel}
+				</a>
 			</div>
 		</section>
 	);
 }
 
-function About() {
+function PinShowcase({ data, dark = false }: { data: PinData; dark?: boolean }) {
+	const wrapperRef = useRef<HTMLDivElement | null>(null);
+	const [activeStep, setActiveStep] = useState(0);
+	const activeRef = useRef(0);
+	const triggerRef = useRef<ScrollTrigger | null>(null);
+
+	useEffect(() => {
+		const wrapper = wrapperRef.current;
+		if (!wrapper) return;
+
+		const mm = gsap.matchMedia();
+		mm.add("(min-width: 1025px)", () => {
+			const stepsText = wrapper.querySelectorAll(".step-text");
+			const stepsVisual = wrapper.querySelectorAll(".step-visual");
+			const dots = wrapper.querySelectorAll(".dot");
+			const progressBar = wrapper.querySelector<HTMLElement>(".pin-progress-bar");
+			const liveRegion = wrapper.querySelector<HTMLElement>("[aria-live]");
+			const stickyContent = wrapper.querySelector<HTMLElement>(".sticky-content");
+			const totalSteps = data.steps.length;
+
+			const updateActiveStep = (index: number) => {
+				if (index === activeRef.current) return;
+				activeRef.current = index;
+				setActiveStep(index);
+				stepsText.forEach((el, current) => el.classList.toggle("active", current === index));
+				stepsVisual.forEach((el, current) => el.classList.toggle("active", current === index));
+				dots.forEach((el, current) => el.classList.toggle("active", current === index));
+				liveRegion?.setAttribute("aria-label", `Step ${index + 1} of ${totalSteps}`);
+			};
+
+			const trigger = ScrollTrigger.create({
+				trigger: wrapper,
+				start: "top top",
+				end: "bottom bottom",
+				pin: stickyContent,
+				scrub: 1,
+				anticipatePin: 1,
+				onUpdate: (self) => {
+					if (progressBar) progressBar.style.width = `${self.progress * 100}%`;
+					const activeIndex = Math.min(totalSteps - 1, Math.max(0, Math.floor(self.progress * totalSteps)));
+					updateActiveStep(activeIndex);
+				},
+			});
+
+			triggerRef.current = trigger;
+
+			const handlers: Array<() => void> = [];
+			dots.forEach((dot) => {
+				const handler = () => {
+					const targetStep = Number((dot as HTMLElement).dataset.step || 0);
+					const scrollDistance = trigger.end - trigger.start;
+					const targetScrollPos = trigger.start + scrollDistance * (targetStep / (totalSteps - 1));
+					gsap.to(window, { scrollTo: targetScrollPos, duration: 0.8, ease: "power2.out" });
+				};
+				dot.addEventListener("click", handler);
+				handlers.push(() => dot.removeEventListener("click", handler));
+			});
+
+			return () => {
+				handlers.forEach((cleanup) => cleanup());
+				trigger.kill();
+				triggerRef.current = null;
+			};
+		});
+
+		return () => mm.revert();
+	}, [data.steps.length]);
+
+	useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent) => {
+			const trigger = triggerRef.current;
+			if (!trigger?.isActive) return;
+			const stepValue = (trigger.end - trigger.start) / Math.max(1, data.steps.length - 1);
+			if (event.key === "ArrowDown") {
+				event.preventDefault();
+				gsap.to(window, { scrollTo: window.scrollY + stepValue, duration: 0.4, ease: "power2.out" });
+			}
+			if (event.key === "ArrowUp") {
+				event.preventDefault();
+				gsap.to(window, { scrollTo: window.scrollY - stepValue, duration: 0.4, ease: "power2.out" });
+			}
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [data.steps.length]);
+
 	return (
-		<section id="about" className="mx-auto max-w-6xl px-6 py-24">
-			<p className="section-label">About</p>
-			<div className="mt-6 grid gap-10 lg:grid-cols-[0.8fr_1.2fr]">
-				<h2 className="section-title">Saya fokus mengubah kebutuhan user menjadi antarmuka yang rapi dan fungsional.</h2>
-				<div className="space-y-5 text-lg leading-8 text-[#6B7280]">
-					<p>Bagian ini dirancang singkat untuk HRD: siapa kandidatnya, cara berpikirnya, dan value yang bisa dibawa ke tim.</p>
-					<p>Saya tertarik pada frontend engineering, UI implementation, dan produk yang menyelesaikan masalah nyata dengan pengalaman pengguna yang jelas.</p>
+		<div ref={wrapperRef} className={`pin-wrapper ${dark ? "dark-theme" : ""}`} id={data.id} aria-label={data.ariaLabel} style={{ height: `${data.steps.length * 100}vh` }}>
+			<div className="pin-progress-bar" />
+			<div className="sticky-content">
+				<div className="container-split">
+					<div className="split-left">
+						<div className="sticky-nav-dots" role="tablist" aria-label={`${data.ariaLabel} steps`}>
+							{data.steps.map((_, index) => (
+								<button key={index} className={`dot ${index === activeStep ? "active" : ""}`} data-step={index} type="button" aria-label={`Go to step ${index + 1} of ${data.steps.length}`} aria-current={index === activeStep ? "step" : undefined} />
+							))}
+						</div>
+
+						<div className="step-text-container" aria-live="polite" aria-label={`Step ${activeStep + 1} of ${data.steps.length}`}>
+							{data.steps.map((step, index) => (
+								<div key={step.label} className={`step-text ${index === activeStep ? "active" : ""}`}>
+									<span className="label-step">{step.label}</span>
+									<h2>{step.title}</h2>
+									<p>{step.body}</p>
+								</div>
+							))}
+						</div>
+					</div>
+
+					<div className="split-right">
+						{data.steps.map((step, index) => (
+							<div key={step.label} className={`step-visual ${index === activeStep ? "active" : ""}`}>
+								<VisualRenderer visual={step.visual} />
+							</div>
+						))}
+					</div>
 				</div>
+			</div>
+		</div>
+	);
+}
+
+function VisualRenderer({ visual }: { visual: Visual }) {
+	if (visual.type === "image") return <img src={visual.src} alt={visual.alt} />;
+	if (visual.type === "icons") {
+		return (
+			<div className="skills-icon-grid">
+				{visual.items.map((item) => <div className="icon-card" key={item}>{item}</div>)}
+			</div>
+		);
+	}
+	if (visual.type === "stack") return <div className="tech-stack-logos">{visual.items.map((item, index) => <span key={item}>{index > 0 ? " • " : ""}{item}</span>)}</div>;
+	if (visual.type === "quote") return <blockquote className="large-quote">“{visual.quote}”</blockquote>;
+	if (visual.type === "stat") return <div className="impact-stat"><span className="stat-number">{visual.number}</span><span className="stat-label">{visual.label}</span></div>;
+	return <div className={`mockup-placeholder ${visual.className}`}>{visual.text}</div>;
+}
+
+function ProjectsGrid() {
+	return (
+		<section className="section-normal grid-bg">
+			<div className="section-header">
+				<span className="label-step">{portfolio.projects.label}</span>
+				<h2>{portfolio.projects.title}</h2>
+			</div>
+			<div className="projects-grid">
+				{portfolio.projects.items.map((project) => (
+					<article className="project-card" key={project.title} style={{ backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.96)), url(${project.image})` }}>
+						<h3>{project.title}</h3>
+						<p>{project.category}</p>
+					</article>
+				))}
 			</div>
 		</section>
 	);
 }
 
 function Skills() {
-	const sectionRef = useRef<HTMLElement | null>(null);
-
-	useEffect(() => {
-		const ctx = gsap.context(() => {
-			gsap.fromTo(
-				".skill-fill",
-				{ width: "0%" },
-				{
-					width: (_, el: HTMLElement) => el.style.getPropertyValue("--skill"),
-					duration: 1,
-					ease: "power2.out",
-					scrollTrigger: { trigger: sectionRef.current, start: "top 70%" },
-				},
-			);
-		}, sectionRef);
-		return () => ctx.revert();
-	}, []);
-
 	return (
-		<section ref={sectionRef} id="skills" className="skills-section mx-auto max-w-6xl px-6 py-24">
-			<p className="section-label">Skills</p>
-			<h2 className="section-title mt-6">Skill utama untuk membangun UI portfolio dan aplikasi web.</h2>
-			<div className="mt-10 grid gap-5 md:grid-cols-2">
-				{portfolio.skills.map((skill) => (
-					<div key={skill.name} className="rounded-3xl border border-[#E5E7EB] bg-white p-6">
-						<div className="flex items-center justify-between gap-4">
-							<h3 className="font-semibold">{skill.name}</h3>
-							<span className="font-mono text-sm text-[#6366F1]">{skill.level}</span>
-						</div>
-						<div className="mt-4 h-2 overflow-hidden rounded-full bg-[#E5E7EB]">
-							<div className="skill-fill h-full rounded-full bg-[#6366F1]" style={{ "--skill": skill.level } as React.CSSProperties} />
-						</div>
-					</div>
-				))}
+		<section className="section-normal">
+			<div className="section-header">
+				<span className="label-step">{portfolio.skills.label}</span>
+				<h2>{portfolio.skills.title}</h2>
 			</div>
-		</section>
-	);
-}
-
-function ProjectsPin() {
-	const sectionRef = useRef<HTMLElement | null>(null);
-	const progressRef = useRef<HTMLDivElement | null>(null);
-	const contentRef = useRef<HTMLElement | null>(null);
-	const activeStepRef = useRef(0);
-	const [activeStep, setActiveStep] = useState(0);
-
-	useEffect(() => {
-		const mm = gsap.matchMedia();
-
-		mm.add("(min-width: 768px)", () => {
-			const trigger = ScrollTrigger.create({
-				trigger: sectionRef.current,
-				start: "top top",
-				end: "+=400%",
-				pin: true,
-				scrub: 1,
-				anticipatePin: 1,
-				markers: import.meta.env.DEV,
-				onUpdate: (self) => {
-					const nextStep = Math.min(steps.length - 1, Math.floor(self.progress * steps.length));
-
-					if (nextStep !== activeStepRef.current) {
-						activeStepRef.current = nextStep;
-						gsap.to(contentRef.current, {
-							opacity: 0,
-							y: -20,
-							duration: 0.18,
-							ease: "power2.inOut",
-							onComplete: () => {
-								setActiveStep(nextStep);
-								gsap.fromTo(contentRef.current, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.inOut" });
-							},
-						});
-					}
-
-					gsap.to(progressRef.current, { scaleY: self.progress, duration: 0.2, ease: "power2.out" });
-				},
-			});
-
-			return () => trigger.kill();
-		});
-
-		return () => mm.revert();
-	}, []);
-
-	return (
-		<section ref={sectionRef} id="projects" className="projects-pin bg-[#F8F9FA]">
-			<div className="mx-auto grid min-h-screen max-w-6xl gap-8 px-6 py-20 md:grid-cols-12 md:py-0">
-				<ProjectSidebar activeStep={activeStep} progressRef={progressRef} />
-
-				<main className="hidden items-center md:col-span-8 md:flex">
-					<article ref={contentRef} className="case-content max-w-2xl will-change-transform">
-						<CaseContent step={steps[activeStep]} index={activeStep} />
+			<div className="skills-4col">
+				{portfolio.skills.items.map((skill) => (
+					<article className="skill-item" key={skill.title}>
+						<h4>{skill.title}</h4>
+						<p>{skill.body}</p>
 					</article>
-				</main>
-
-				<div className="grid gap-6 md:hidden">
-					{steps.map((step, index) => (
-						<article key={step.label} className="rounded-3xl border border-[#E5E7EB] bg-white p-6">
-							<CaseContent step={step} index={index} />
-						</article>
-					))}
-				</div>
+				))}
 			</div>
 		</section>
-	);
-}
-
-function ProjectSidebar({ activeStep, progressRef }: { activeStep: number; progressRef: React.RefObject<HTMLDivElement | null> }) {
-	return (
-		<aside className="flex flex-col justify-center md:col-span-4">
-			<p className="font-mono text-sm text-[#6366F1]">{portfolio.project.year}</p>
-			<h2 className="project-title mt-4">{portfolio.project.title}</h2>
-			<p className="mt-5 leading-7 text-[#6B7280]">{portfolio.project.description}</p>
-
-			<div className="mt-6 flex flex-wrap gap-2">
-				{portfolio.project.tags.map((tag) => (
-					<span key={tag} className="rounded-full border border-[#E5E7EB] bg-white px-3 py-1 font-mono text-[13px] text-[#1A1A1A]">
-						{tag}
-					</span>
-				))}
-			</div>
-
-			<div className="mt-10 grid grid-cols-[1px_1fr] gap-5">
-				<div className="relative h-48 bg-[#E5E7EB]">
-					<div ref={progressRef} className="absolute left-0 top-0 h-full w-px origin-top scale-y-0 bg-[#6366F1]" />
-				</div>
-				<ol className="grid content-between py-0.5">
-					{steps.map((step, index) => {
-						const active = index === activeStep;
-						const completed = index < activeStep;
-						return (
-							<li key={step.label} className={`text-sm transition ${active ? "font-bold text-[#6366F1]" : completed ? "text-[#6366F1]" : "text-[#6B7280]"}`}>
-								<span className="mr-2">●</span>
-								{step.label}
-							</li>
-						);
-					})}
-				</ol>
-			</div>
-		</aside>
-	);
-}
-
-function CaseContent({ step, index }: { step: (typeof steps)[number]; index: number }) {
-	return (
-		<>
-			<p className="font-mono text-sm text-[#6366F1]">Step {index + 1}/4 · {step.label}</p>
-			<h3 className="mt-3 text-4xl font-bold leading-[1.15] md:text-5xl">{step.title}</h3>
-			<p className="case-body mt-6 text-[#6B7280]">{step.body}</p>
-			<ul className="mt-8 grid gap-3">
-				{step.points.map((point) => (
-					<li key={point} className="rounded-2xl border border-[#E5E7EB] bg-white px-5 py-4 text-[#1A1A1A]">
-						{point}
-					</li>
-				))}
-			</ul>
-		</>
 	);
 }
 
 function Contact() {
 	return (
-		<section id="contact" className="mx-auto max-w-6xl px-6 py-24">
-			<div className="rounded-[2rem] bg-[#15151C] p-8 text-white shadow-[0_24px_80px_rgba(0,0,0,0.12)] md:p-12">
-				<p className="font-mono text-sm uppercase tracking-[0.3em] text-[#818CF8]">Contact</p>
-				<h2 className="mt-4 max-w-3xl text-4xl font-bold tracking-tight md:text-5xl">{portfolio.contact.cta}</h2>
-				<div className="mt-8 flex flex-wrap gap-4">
-					<a className="rounded-full bg-[#818CF8] px-6 py-3 font-semibold text-[#0B0B0F]" href={`mailto:${portfolio.contact.email}`}>Email me</a>
-					<a className="rounded-full border border-white/10 px-6 py-3 font-semibold" href={`tel:${portfolio.contact.phone}`}>{portfolio.contact.phone}</a>
-				</div>
+		<section className="section-hero dark-theme">
+			<div className="hero-content">
+				<span className="label-step">{portfolio.contact.label}</span>
+				<h2>{portfolio.contact.title}</h2>
+				<a href={`mailto:${portfolio.contact.email}`} className="email-cta">{portfolio.contact.email}</a>
 			</div>
 		</section>
 	);
